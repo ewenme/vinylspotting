@@ -1,0 +1,3 @@
+Vinylspotting is a [Shiny]((https://cran.r-project.org/web/packages/shiny/index.html) app for record diggers to visualise their [Discogs](https://www.discogs.com) collection. Source code [here](https://github.com/ewenme). 
+
+**Licence** Contains Discog's data under the [CCO No Rights Reserved](https://creativecommons.org/share-your-work/public-domain/cc0/) license.
