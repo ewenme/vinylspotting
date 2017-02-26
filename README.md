@@ -1,5 +1,7 @@
 # Vinylspotting
 
+<div style='position:relative;padding-bottom:55%'><iframe src='https://gfycat.com/ifr/CapitalTallImago' frameborder='0' scrolling='no' width='100%' height='100%' style='position:absolute;top:0;left:0;' allowfullscreen></iframe></div>
+
 ##### Overview
 This [Shiny](https://cran.r-project.org/web/packages/shiny/index.html) application is designed to allow [Discogs](https://www.discogs.com) users to visualise the current state and evolution of their record collection and buying habits.
 
