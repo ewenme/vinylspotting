@@ -24,9 +24,6 @@ user_agent <-  'DiscogsViz/1.0'
 baseURL <- 'https://api.discogs.com//users/'
 tailURL <- '/collection/folders/0/releases'
 
-# TO TRY:
-# Publish V1
-# Blog
 
 # COLLECTION RETRIEVAL FUNCTION -------------------------------------------
 
