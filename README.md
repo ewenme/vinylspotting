@@ -13,4 +13,4 @@ The [highcharter](https://cran.r-project.org/web/packages/highcharter/index.html
 
 <br>
 
-The app is running on [Shinyapps](https://www.shinyapps.io) over [here](https://ewenme.shinyapps.io/vinylspotting/).
+The app is running over [here](https://ewenme.shinyapps.io/vinylspotting/).
