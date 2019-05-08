@@ -1,5 +1,7 @@
-# SESSION ------------------------------------------------
 
+# setup -------------------------------------------------------------------
+
+# load packages
 library(shiny)
 library(shinythemes)
 require(data.table)
@@ -9,114 +11,59 @@ library(tidyverse)
 require(lubridate)
 library(highcharter)
 library(zoo)
+library(discogger)
+library(tsibble)
 
-consumer_key <- "xxxxxxxxxxxxxxxxxxxx"
-consumer_secret <- "xxxxxxxxxxxxxxxxxxxxxxxxx"
+# discogs_api_token()
+# 
+# username = "hp22"
+# 
+# data = discogs_user_collection(username, simplify_df = TRUE)
+# 
+# collection_data <- data$content
+# 
+# collection_data$date_added <- as.Date(strptime(collection_data$date_added, "%Y-%m-%d"))
+# 
+# collection_data_df <- as_tsibble(collection_data, key = id, index = date_added)
+# 
+# collection_data_df %>% 
+#   index_by(year_month = yearmonth(date_added)) %>% 
+#   summarise(n_recs = n()) %>% 
+#   fill_gaps(n_recs = 0) %>% 
+#   mutate(cum_recs = cumsum(n_recs))
+# 
+# foo <- unnest(collection_data, basic_information.labels, .sep = ".")
 
-#create unique user agent id
-user_agent <-  'xxxxxxxxx'
-
-#set URL parameters for querying collections
-baseURL <- 'https://api.discogs.com//users/'
-tailURL <- '/collection/folders/0/releases'
-
-
-# COLLECTION RETRIEVAL FUNCTION -------------------------------------------
-
-#function for querying and building tidy user's collection
-getCollection <- function(username){
-  
-  #call API to retrieve raw users collection
-  baseURL <- 'https://api.discogs.com//users/'
-  tailURL <- '/collection/folders/0/releases'
-  pre_run <- getURL(paste0(baseURL, username, tailURL),
-                    httpheader=c('User-Agent'=user_agent))
-  pre_run <- fromJSON(pre_run)
-  
-  #loop through collection pages and bind to dataframe
-  pages <- list()
-  for(i in 1:pre_run$pagination$pages){
-    mydata <- fromJSON(paste0(baseURL, username,
-                              tailURL, "?page=", i), flatten=TRUE)
-    message("Retrieving page ", i)
-    pages[[i+1]] <- mydata$releases
-  }
-  data <- rbind.pages(pages)
-  data <- as.data.table(data)
-  data <- data[!duplicated(data), ]
-  
-  #flatten and clean label info
-  labels <- unnest(data, basic_information.labels)
-  valid_column_names <- make.names(names=names(labels), unique=TRUE, allow_ = TRUE)
-  names(labels) <- valid_column_names
-  
-  labels <- labels %>%
-    select(instance_id, name, catno, resource_url)  %>%
-    rename(label_name = name, label_url = resource_url) %>%
-    filter(!duplicated(instance_id))
-  
-  #flatten and clean format info
-  formats <- unnest(data, basic_information.formats) %>%
-    select(instance_id, descriptions:text) %>%
-    rename(format_name=name, format_text=text) %>%
-    unnest(descriptions)
-  
-  formats <- formats[!duplicated(formats), ]
-  
-  formats <- formats %>%
-    spread(key=descriptions, value=descriptions) %>%
-    filter(!duplicated(instance_id))
-  
-  #flatten and clean artist info
-  artists <- unnest(data, basic_information.artists)
-  valid_column_names <- make.names(names=names(artists), unique=TRUE, allow_ = TRUE)
-  names(artists) <- valid_column_names
-  
-  artists <- artists %>%
-    select(instance_id, name, basic_information.title, resource_url) %>%
-    rename(artist_name=name, artist_url=resource_url) %>%
-    filter(!duplicated(instance_id))
-  
-  #bind this all together (apart from formats, they need a separate join)
-  data <- select(data, instance_id:rating, basic_information.year)
-  data <- cbind(data, artists, labels, id="instance_id")
-  
-  #make col names unique
-  valid_column_names <- make.names(names=names(data), unique=TRUE, allow_ = TRUE)
-  names(data) <- valid_column_names
-  
-  #remove unneeded cols
-  data <- select(data, -rating, -instance_id.1, -instance_id.2)
-  
-  data <- left_join(data, formats, by = c("instance_id"="instance_id"))
-}
-
-
-# UI --------------------------------------------------------------
+# UI ----------------------------------------------------------------------
 
 # Define UI for application that draws a histogram
-ui <- navbarPage("Vinylspotting",
+ui <- navbarPage("vinylSpotting",
                  theme = shinytheme("cosmo"),
    
    # Application title
    tabPanel("App",
+            
    # bit with the username input and submit button 
    fluidRow(
-     
      column(3,
       wellPanel(
-        textInput("username", label="User", value = "", width = NULL, placeholder = "Enter your Discogs username"),
-        textInput("username", label="User", value = "", width = NULL, placeholder = "Enter your (case-sensitive) Discogs username"),
-        actionButton("go", "Submit")),
+        textInput("username", label = "user", value = "", width = NULL, 
+                  placeholder = "enter your Discogs username"),
+        actionButton("go", "submit")),
+      
     # bit with the years slider and x-axis var selector
       wellPanel(
-        sliderInput("year", "Choose your digging years", min=2000, max=as.integer(format(Sys.Date(), "%Y")),
-                    value = c(2000, as.integer(format(Sys.Date(), "%Y"))), step=1, sep = ""),
-        selectInput("xvar", "Wot 2 look at?", c("Labels", "Artists", "Record formats",
-                                             "Release formats", "Year of issue", "Month bought", "Year bought"),
+        sliderInput("year", "choose your digging years", min = 2000, 
+                    max = as.integer(format(Sys.Date(), "%Y")),
+                    value = c(2000, as.integer(format(Sys.Date(), "%Y"))), 
+                    step=1, sep = ""),
+        selectInput("xvar", "wot 2 look at?", 
+                    c("Labels", "Artists", "Record formats", "Release formats", 
+                      "Year of issue", "Month bought", "Year bought"),
                     selected = "Labels")
-)),
-  # Main panel w/ plot
+        )),
+  
+    # Main panel w/ plot
     column(9,  
       wellPanel(
         highchartOutput("plot", height = "500px")
@@ -127,259 +74,78 @@ ui <- navbarPage("Vinylspotting",
   # about page (draws from Rmd file)
   tabPanel("About",
          fluidRow(
-           column(6,
-                  includeMarkdown("about.Rmd")
-           ))))
+           column(6, includeMarkdown("about.Rmd")
+           ))
+         )
+)
 
 
 # SERVER -------------------------------------------------------------
 
 server <- function(input, output, session) {
   
-  # reactivevent - retrieve user collection when action button pressed
-  data <- eventReactive(input$go, {
+  # retrieve user collection when action button pressed
+  collection <- eventReactive(input$go, {
+    
+    # ensure user name is provided
     req(input$username)
-    withProgress(message = 'Hold tight...',
-                 detail = '(but if your collection is more than a few k, you got time to make a tea)',
+    
+    # progress bar
+    withProgress(message = "Hold tight!",
+                 detail = "(...but if your collection is more than a few k, there's enough time to make a tea)",
                  value = 0, {
                    for (i in 1:15) {
                      incProgress(1/15)
                    }
-                   getCollection(input$username)
+                   
+                   collection_df <- discogs_user_collection(input$username, simplify_df = TRUE)
+                   
+                   collection_df <- collection_df$content
+
+                   # handle data types
+                   collection_df$date_added <- as.Date(strptime(collection_df$date_added, "%Y-%m-%d"))
+                   
+                   collection_df
+                   
                  })
   })
   
   # filter collection based on session inputs
-  data_filtered <- reactive({
-    minyear <- input$year[1]
-    maxyear <- input$year[2]
-    df <- data() %>%
-      filter(year(date_added) >= minyear,
-             year(date_added) <= maxyear)
-    df <- as.data.frame(df)
+  collection_filtered <- reactive({
+
+    filter(collection(), year(date_added) >= input$year[1],
+           year(date_added) <= input$year[2]) 
   })
   
   #make dataframe for cumulative line graph
-  data_cum <- reactive({
+  collection_yearmon <- reactive({
     
-    by_mon <- data() %>%
-      mutate(ym = as.Date(as.yearmon(date_added))) %>%
-      group_by(ym) %>%
-      summarise(Records = n())
+    collection() %>%
+      as_tsibble(key = id, index = date_added) %>% 
+      index_by(year_month = yearmonth(date_added)) %>% 
+      summarise(n_recs = n()) %>% 
+      fill_gaps(n_recs = 0)  %>% 
+      mutate(cum_recs = cumsum(n_recs))
     
-    all_dates = seq(as.Date(as.yearmon(min(data()$date_added))), 
-                    as.Date(as.yearmon(max(data()$date_added))), by="month")
-    
-    by_mon_clean = merge(data.frame(date = all_dates),
-                         by_mon,
-                         by.x='date',
-                         by.y='ym',
-                         all.x=T,
-                         all.y=T)
-    
-    by_mon_clean$Records[is.na(by_mon_clean$Records)] = 0
-    
-    by_mon_clean <- mutate(by_mon_clean, 
-                           cumsum=cumsum(Records), yearmon = as.yearmon(date))
-    
-    by_mon_clean
   })
-  
-  #make dataframe for month graph
-  data_month <- reactive({
-    
-    by_mon <- data_filtered() %>%
-      mutate(ym = as.Date(as.yearmon(date_added))) %>%
-      group_by(ym) %>%
-      summarise(Records = n())
-    
-    all_dates = seq(as.Date(as.yearmon(min(data_filtered()$date_added))), 
-                    as.Date(as.yearmon(max(data_filtered()$date_added))), by="month")
-    
-    by_mon_clean = merge(data.frame(date = all_dates),
-                         by_mon,
-                         by.x='date',
-                         by.y='ym',
-                         all.x=T,
-                         all.y=T)
-    
-    by_mon_clean$Records[is.na(by_mon_clean$Records)] = 0
-    
-    by_mon_clean <- by_mon_clean %>%
-      mutate(month=lubridate::month(date, label=TRUE),
-                           year=lubridate::year(date)) %>%
-      group_by(month) %>%
-      summarise(month_rec_rate=sum(Records)/n())
-    
-    by_mon_clean
-  })
-  
-  # make dataframe for year issued graph
-  data_year <- reactive({
-    
-    by_year <- data_filtered() %>%
-      group_by(basic_information.year) %>%
-      summarise(Records = n()) %>%
-      filter(basic_information.year != 0)
-    
-    all_dates = seq(min(by_year$basic_information.year), max(by_year$basic_information.year))
-    
-    by_year_clean = merge(data.frame(date = all_dates),
-                          by_year,
-                          by.x='date',
-                          by.y='basic_information.year',
-                          all.x=T,
-                          all.y=T)
-    
-    by_year_clean$Records[is.na(by_year_clean$Records)] = 0
 
-    by_year_clean
-  })
-  
-  # observer - update available slider values based on years present in users collection
+  # update available slider values based on years present in users collection
   observe({
-    minyear <- min(year(data()$date_added))
-    maxyear <- max(year(data()$date_added))
+    minyear <- min(year(collection()$date_added))
+    maxyear <- max(year(collection()$date_added))
     # Control the value, min, max, and step.
     # Step size is 2 when input value is even; 1 when value is odd.
-    updateSliderInput(session, "year",
-                      min = minyear,
-                      max = maxyear,
+    updateSliderInput(session, "year", min = minyear, max = maxyear,
                       value= c(minyear, maxyear))
   })
   
   # highchart output dependent on x-axis var picked by user 
   output$plot <- renderHighchart({
     
-    if (input$xvar == "Labels") {
-      data_filtered() %>%
-      group_by(label_name) %>%
-      summarise(Records = n()) %>%
-      arrange(desc(Records)) %>%
-      top_n(10) %>%
-      hchart("bar", hcaes(x = label_name, y = Records), name="Records", color="#252525") %>%
-      hc_title(text = paste0("Your most bought labels, ", input$year[1], "-", input$year[2])) %>% 
-      hc_xAxis(title = list(text = "Label")) %>%
+    collection_yearmon() %>%
+      hchart("line", hcaes(x = year_month, y = n_recs), name="Records", color="#252525") %>%
       hc_yAxis(allowDecimals=FALSE, title = list(text = "No. of records")) %>%
       hc_add_theme(hc_theme_smpl())
-    }
-    else if (input$xvar == "Artists") {
-      data_filtered() %>%
-        group_by(artist_name) %>%
-        summarise(Records = n()) %>%
-        arrange(desc(Records)) %>%
-        filter(artist_name != "Various") %>%
-        top_n(10) %>%
-        hchart("bar", hcaes(x = artist_name, y = Records), name="Records", color="#252525") %>%
-        hc_title(text = paste0("Your most bought artists, ", input$year[1], "-", input$year[2])) %>% 
-        hc_xAxis(title = list(text = "Artist")) %>%
-        hc_yAxis(allowDecimals=FALSE, title = list(text = "No. of records")) %>%
-        hc_add_theme(hc_theme_smpl())
-    }
-    else if (input$xvar == "Record formats") {
-      data_filtered() %>%
-        summarise(`12"` = sum(`12"` == "12\"", na.rm=TRUE),
-                  `10"` = sum(`10"` == "10\"", na.rm=TRUE),
-                  `7"` = sum(`7"` == "7\"", na.rm=TRUE),
-                  LP = sum(LP == "LP", na.rm=TRUE),
-                  Cassette = sum(format_name == "Cassette", na.rm=TRUE),
-                  CD = sum(format_name == "CD", na.rm=TRUE)) %>%
-        gather(key=`Record Format`, value=Records) %>%
-        arrange(desc(Records)) %>%
-        hchart("column", hcaes(x = `Record Format`, y = Records), name="Records", color="#252525") %>%
-        hc_title(text = paste0("Your most bought record formats, ", input$year[1], "-", input$year[2])) %>% 
-        hc_xAxis(title = list(text = "Record format")) %>%
-        hc_yAxis(allowDecimals=FALSE, title = list(text = "No. of records")) %>%
-        hc_add_theme(hc_theme_smpl())
-    }
-    else if (input$xvar == "Release formats") {
-      data_filtered() %>%
-        summarise(Album = sum(Album == "Album", na.rm=TRUE),
-                  Compilation = sum(Compilation == "Compilation", na.rm=TRUE),
-                  EP = sum(EP == "EP", na.rm=TRUE),
-                  Reissue = sum(Reissue == "Reissue", na.rm=TRUE),
-                  Repress = sum(Repress == "Repress", na.rm=TRUE),
-                  `Test Pressing` = sum(`Test Pressing` == "Test Pressing", na.rm=TRUE),
-                  `White Label` = sum(`White Label` == "White Label", na.rm=TRUE)) %>%
-        gather(key=`Release Format`, value=Records) %>%
-        arrange(desc(Records)) %>%
-        hchart("column", hcaes(x = `Release Format`, y = Records), name="Records", color="#252525") %>%
-        hc_title(text = paste0("Your most bought release formats, ", input$year[1], "-", input$year[2])) %>% 
-        hc_xAxis(title = list(text = "Release format")) %>%
-        hc_yAxis(allowDecimals=FALSE, title = list(text = "No. of records")) %>%
-        hc_add_theme(hc_theme_smpl())
-    }
-    else if (input$xvar == "Year of issue") {
-      hchart(data_year(), "column", hcaes(x = date, y = Records), name="Records", color="#252525") %>%
-        hc_title(text = paste0("Your records issue years, ", input$year[1], "-", input$year[2])) %>% 
-        hc_xAxis(title = list(text = "Year issued")) %>%
-        hc_yAxis(allowDecimals=FALSE, title = list(text = "No. of records")) %>%
-        hc_add_theme(hc_theme_smpl())
-    }
-    else if (input$xvar == "Month bought") {
-      hchart(data_month(), "line", hcaes(x = month, y = month_rec_rate), name="Records", color="#252525") %>%
-        hc_title(text = paste0("Average no. records bought by month, ", input$year[1], "-", input$year[2])) %>% 
-        hc_xAxis(title = list(text = "Month")) %>%
-        hc_yAxis(allowDecimals=FALSE, title = list(text = "Average no. of records bought")) %>%
-        hc_add_theme(hc_theme_smpl())
-    }
-    else if (input$xvar == "Year bought") {
-
-      data_filtered() %>%
-        group_by(lubridate::year(date_added)) %>%
-        summarise(`Average no. of records bought per month`=round(n()/12)) %>%
-        hchart("line", hcaes(x = as.factor(`lubridate::year(date_added)`), y = `Average no. of records bought per month`), 
-               name="Records bought per month", color="#252525") %>%
-        hc_title(text = paste0("Monthly average no. records bought, ", input$year[1], "-", input$year[2])) %>% 
-        hc_xAxis(title = list(text = "Year")) %>%
-        hc_yAxis(allowDecimals=FALSE, title = list(text = "Average no. of records bought per month")) %>%
-        hc_add_theme(hc_theme_smpl())
-    }
-    
-    else if (input$xvar == "Release formats") {
-      data_filtered() %>%
-        summarise(Album = sum(Album == "Album", na.rm=TRUE),
-                  Compilation = sum(Compilation == "Compilation", na.rm=TRUE),
-                  EP = sum(EP == "EP", na.rm=TRUE),
-                  Reissue = sum(Reissue == "Reissue", na.rm=TRUE),
-                  Repress = sum(Repress == "Repress", na.rm=TRUE),
-                  `Test Pressing` = sum(`Test Pressing` == "Test Pressing", na.rm=TRUE),
-                  `White Label` = sum(`White Label` == "White Label", na.rm=TRUE)) %>%
-        gather(key=`Release Format`, value=Records) %>%
-        arrange(desc(Records)) %>%
-        hchart("column", hcaes(x = `Release Format`, y = Records), name="Records", color="#252525") %>%
-        hc_title(text = paste0("Your most bought release formats, ", input$year[1], "-", input$year[2])) %>% 
-        hc_xAxis(title = list(text = "Release format")) %>%
-        hc_yAxis(allowDecimals=FALSE, title = list(text = "No. of records")) %>%
-        hc_add_theme(hc_theme_smpl())
-    }
-    else if (input$xvar == "Year of issue") {
-      hchart(data_year(), "column", hcaes(x = date, y = Records), name="Records", color="#252525") %>%
-        hc_title(text = paste0("Your records issue years, ", input$year[1], "-", input$year[2])) %>% 
-        hc_xAxis(title = list(text = "Year issued")) %>%
-        hc_yAxis(allowDecimals=FALSE, title = list(text = "No. of records")) %>%
-        hc_add_theme(hc_theme_smpl())
-    }
-    else if (input$xvar == "Month bought") {
-      hchart(data_month(), "line", hcaes(x = month, y = month_rec_rate), name="Records", color="#252525") %>%
-        hc_title(text = paste0("Average no. records bought by month, ", input$year[1], "-", input$year[2])) %>% 
-        hc_xAxis(title = list(text = "Month")) %>%
-        hc_yAxis(allowDecimals=FALSE, title = list(text = "Average no. of records bought")) %>%
-        hc_add_theme(hc_theme_smpl())
-    }
-    else if (input$xvar == "Year bought") {
-
-      data_filtered() %>%
-        group_by(lubridate::year(date_added)) %>%
-        summarise(`Average no. of records bought per month`=round(n()/12)) %>%
-        hchart("line", hcaes(x = as.factor(`lubridate::year(date_added)`), y = `Average no. of records bought per month`), 
-               name="Records bought per month", color="#252525") %>%
-        hc_title(text = paste0("Monthly average no. records bought, ", input$year[1], "-", input$year[2])) %>% 
-        hc_xAxis(title = list(text = "Year")) %>%
-        hc_yAxis(allowDecimals=FALSE, title = list(text = "Average no. of records bought per month")) %>%
-        hc_add_theme(hc_theme_smpl())
-    }
-
   })
 
 }
