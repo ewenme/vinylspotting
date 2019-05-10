@@ -4,15 +4,16 @@
 # load packages
 library(shiny)
 library(shinythemes)
-require(data.table)
-library(jsonlite)
-library(RCurl)
+library(shinybusy)
+library(anytime)
+library(dplyr)
+library(tsibble)
+library(discogger)
+library(highcharter)
+
 library(tidyverse)
 require(lubridate)
-library(highcharter)
 library(zoo)
-library(discogger)
-library(tsibble)
 
 # discogs_api_token()
 # 
@@ -22,102 +23,109 @@ library(tsibble)
 # 
 # collection_data <- data$content
 # 
-# collection_data$date_added <- as.Date(strptime(collection_data$date_added, "%Y-%m-%d"))
+# collection_data$date_added <- anydate(collection_data$date_added)
 # 
-# collection_data_df <- as_tsibble(collection_data, key = id, index = date_added)
+# collection_data %>%
+#   as_tsibble(key = id, index = date_added) %>% 
+#   index_by(year_month = yearmonth(date_added)) %>%
+#   summarise(n_recs = n()) %>%
+#   fill_gaps(n_recs = 0) %>%
+#   mutate(cum_recs = cumsum(n_recs), ma_recs = slide_dbl(n_recs, mean, .size = 3))
+
+
+# labels <- unnest(collection_data, basic_information.labels, .sep = "_") %>% 
+#   select(instance_id:id, basic_information.labels_name:basic_information.labels_entity_type_name)
 # 
-# collection_data_df %>% 
-#   index_by(year_month = yearmonth(date_added)) %>% 
-#   summarise(n_recs = n()) %>% 
-#   fill_gaps(n_recs = 0) %>% 
-#   mutate(cum_recs = cumsum(n_recs))
+# artists <- unnest(collection_data, basic_information.artists, .sep = "_") %>% 
+#   select(instance_id:id, basic_information.artists_join:basic_information.artists_id)
 # 
-# foo <- unnest(collection_data, basic_information.labels, .sep = ".")
+# formats <- unnest(collection_data, basic_information.formats, .sep = "_") %>% 
+#   select(instance_id:id, basic_information.formats_descriptions:basic_information.formats_text)
+
 
 # UI ----------------------------------------------------------------------
 
-# Define UI for application that draws a histogram
-ui <- navbarPage("vinylSpotting",
-                 theme = shinytheme("cosmo"),
-   
-   # Application title
-   tabPanel("App",
-            
-   # bit with the username input and submit button 
-   fluidRow(
-     column(3,
-      wellPanel(
-        textInput("username", label = "user", value = "", width = NULL, 
-                  placeholder = "enter your Discogs username"),
-        actionButton("go", "submit")),
+ui <- navbarPage(
+ 
+  title = "vinylSpotting", theme = shinytheme("cosmo"),
+  
+  tabPanel(
+    title = "app",
+    
+    add_busy_bar(color = "#FFFFFF"),
+
+    # bit with the username input and submit button 
+    fluidRow(
+      column(3,
+             wellPanel(
+               textInput("userName", label = "user", value = "", 
+                         placeholder = "enter your Discogs username"
+                         ),
+               actionButton("go", "submit")
+               ),
       
     # bit with the years slider and x-axis var selector
-      wellPanel(
-        sliderInput("year", "choose your digging years", min = 2000, 
-                    max = as.integer(format(Sys.Date(), "%Y")),
-                    value = c(2000, as.integer(format(Sys.Date(), "%Y"))), 
-                    step=1, sep = ""),
-        selectInput("xvar", "wot 2 look at?", 
-                    c("Labels", "Artists", "Record formats", "Release formats", 
-                      "Year of issue", "Month bought", "Year bought"),
-                    selected = "Labels")
-        )),
+    wellPanel(
+      dateRangeInput("dateRange", label = "diggin' dates",
+                     startview = "year"
+                     ),
+      selectInput("xVar", label = "wot 2 look at?", 
+                  choices = c("labels", "artists", "formats", "issue year"),
+                  selected = "labels"
+      ),
+      selectInput("chartType", label = "chart type", 
+                  choices = c("bar", "column", "line", "spline"),
+                  selected = "spline"
+                  )
+      )
+    ),
   
     # Main panel w/ plot
     column(9,  
       wellPanel(
-        highchartOutput("plot", height = "500px")
+        highchartOutput("chart", height = "500px")
       ))
-   )
-),
+   )),
 
   # about page (draws from Rmd file)
-  tabPanel("About",
+  tabPanel("about",
          fluidRow(
            column(6, includeMarkdown("about.Rmd")
-           ))
+                  )
+           )
          )
-)
+  )
 
 
-# SERVER -------------------------------------------------------------
+# server -------------------------------------------------------------
 
 server <- function(input, output, session) {
   
-  # retrieve user collection when action button pressed
+  # retrieve user collection when username submitted
   collection <- eventReactive(input$go, {
     
     # ensure user name is provided
-    req(input$username)
+    req(input$userName)
     
-    # progress bar
-    withProgress(message = "Hold tight!",
-                 detail = "(...but if your collection is more than a few k, there's enough time to make a tea)",
-                 value = 0, {
-                   for (i in 1:15) {
-                     incProgress(1/15)
-                   }
-                   
-                   collection_df <- discogs_user_collection(input$username, simplify_df = TRUE)
-                   
-                   collection_df <- collection_df$content
-
-                   # handle data types
-                   collection_df$date_added <- as.Date(strptime(collection_df$date_added, "%Y-%m-%d"))
-                   
-                   collection_df
-                   
-                 })
-  })
+    # hit discogs api
+    collection_df <- discogs_user_collection(input$userName, simplify_df = TRUE)
+    
+    # extract result content
+    collection_df <- collection_df$content
+    
+    # fix dates
+    collection_df$date_added <- anydate(collection_df$date_added, "%Y-%m-%d")
+    
+    collection_df
+    
+    })
   
-  # filter collection based on session inputs
-  collection_filtered <- reactive({
-
-    filter(collection(), year(date_added) >= input$year[1],
-           year(date_added) <= input$year[2]) 
+  collection_dated <- reactive({
+    
+    filter(collection(), between(date_added, input$dateRange[1], input$dateRange[2]))
   })
-  
-  #make dataframe for cumulative line graph
+
+  # make dataframe for cumulative line graph
   collection_yearmon <- reactive({
     
     collection() %>%
@@ -129,26 +137,28 @@ server <- function(input, output, session) {
     
   })
 
-  # update available slider values based on years present in users collection
+  # update available date values based on users collection
   observe({
-    minyear <- min(year(collection()$date_added))
-    maxyear <- max(year(collection()$date_added))
-    # Control the value, min, max, and step.
-    # Step size is 2 when input value is even; 1 when value is odd.
-    updateSliderInput(session, "year", min = minyear, max = maxyear,
-                      value= c(minyear, maxyear))
+    
+    df <- collection()
+    
+    updateDateRangeInput(session, "dateRange",
+                         start = min(df$date_added),
+                         end = max(df$date_added),
+                         min = min(df$date_added),
+                         max = max(df$date_added))
   })
   
   # highchart output dependent on x-axis var picked by user 
-  output$plot <- renderHighchart({
+  output$chart <- renderHighchart({
     
     collection_yearmon() %>%
-      hchart("line", hcaes(x = year_month, y = n_recs), name="Records", color="#252525") %>%
-      hc_yAxis(allowDecimals=FALSE, title = list(text = "No. of records")) %>%
+      hchart(input$chartType, hcaes(x = year_month, y = n_recs), name="Records", 
+             color="#252525") %>%
+      hc_yAxis(allowDecimals = FALSE, title = list(text = "No. of records")) %>%
       hc_add_theme(hc_theme_smpl())
   })
 
 }
 
-# Run the application 
 shinyApp(ui = ui, server = server)
