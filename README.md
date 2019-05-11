@@ -1,16 +1,33 @@
-# Vinylspotting
 
-![Vinylspotting](https://github.com/ewenme/Vinylspotting/blob/master/vinyspotting_preview.gif)
+<!-- README.md is generated from README.Rmd. Please edit that file -->
 
-##### Overview
-This [Shiny](https://cran.r-project.org/web/packages/shiny/index.html) application is designed to allow [Discogs](https://www.discogs.com) users to visualise the current state and evolution of their record collection and buying habits.
+# vinylspotting
 
-##### Data sources
-Discogs user data is taken from Discog's RESTful API (documentation [here](https://www.discogs.com/developers/)), made available under the [CC0 No Rights Reserved license](http://creativecommons.org/about/cc0).
+![vinylspotting](vinyspotting_preview.gif)
 
-##### Credits
-The [highcharter](https://cran.r-project.org/web/packages/highcharter/index.html) R packages were used in the graphical outputs of this [Shiny](https://cran.r-project.org/web/packages/shiny/index.html) app.
+An app to help [Discogs](https://www.discogs.com) users visualise the
+current state, and evolution of, their record collection and buying
+habits.
 
-<br>
+## Use
 
-The app is running over [here](https://ewenme.shinyapps.io/vinylspotting/).
+Visit [apps.ewen.io/vinylspotting](https://apps.ewen.io/vinylspotting/)
+to use `vinylspotting`.
+
+1.  Enter your Discogs user name
+2.  Have a look around
+3.  Export any visuals you wanna keep
+
+You can also run the app locally, from an R session, by simply running:
+
+``` r
+library(shiny)
+runGitHub(repo = "ewenme/vinylspotting", subdir = "inst/shiny")
+```
+
+Note: You will be prompted for a Discogs API access token if running
+`vinylspotting` locally. Refer to
+[discogger](https://github.com/ewenme/discogger) if you need help.
+
+> *Copyright 2019 [Ewen Henderson](http://ewen.io/). Licensed under the
+> MIT license.*

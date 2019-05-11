@@ -4,6 +4,7 @@
 #' Discogs collections. The tool will be launched in a web browser.
 #' @export
 launch <- function() {
+  discogger::discogs_api_token()
   shiny::runApp(system.file("shiny", package = "vinylspotting"),
                 display.mode = "normal", launch.browser = TRUE)
 }
