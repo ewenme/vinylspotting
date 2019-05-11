@@ -1,0 +1,31 @@
+Package: vinylspotting
+Title: Explore Discogs Record Collections
+Version: 0.0.0.9000
+Authors@R: 
+    person(given = "Ewen",
+           family = "Henderson",
+           role = c("aut", "cre"),
+           email = "ewen.henderson@example.com",
+           comment = c(ORCID = "0000-0002-4748-4693"))
+Description: Visualise and explore your Discogs collection,
+    in the browser.
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+Depends:
+    R (>= 3.3.0)
+Imports: 
+    shiny,
+    shinythemes,
+    shinybusy,
+    shinycssloaders,
+    shinyjs,
+    shinyalert,
+    anytime,
+    dplyr,
+    tidyr,
+    lubridate,
+    tsibble,
+    highcharter
+Remotes: ewenme/discogger
+RoxygenNote: 6.1.1
