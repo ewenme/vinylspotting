@@ -7,13 +7,11 @@ library(shinythemes)
 library(shinybusy)
 library(anytime)
 library(dplyr)
+library(tidyr)
 library(tsibble)
 library(discogger)
 library(highcharter)
 
-library(tidyverse)
-require(lubridate)
-library(zoo)
 
 # discogs_api_token()
 # 
@@ -25,22 +23,6 @@ library(zoo)
 # 
 # collection_data$date_added <- anydate(collection_data$date_added)
 # 
-# collection_data %>%
-#   as_tsibble(key = id, index = date_added) %>% 
-#   index_by(year_month = yearmonth(date_added)) %>%
-#   summarise(n_recs = n()) %>%
-#   fill_gaps(n_recs = 0) %>%
-#   mutate(cum_recs = cumsum(n_recs), ma_recs = slide_dbl(n_recs, mean, .size = 3))
-
-
-# labels <- unnest(collection_data, basic_information.labels, .sep = "_") %>% 
-#   select(instance_id:id, basic_information.labels_name:basic_information.labels_entity_type_name)
-# 
-# artists <- unnest(collection_data, basic_information.artists, .sep = "_") %>% 
-#   select(instance_id:id, basic_information.artists_join:basic_information.artists_id)
-# 
-# formats <- unnest(collection_data, basic_information.formats, .sep = "_") %>% 
-#   select(instance_id:id, basic_information.formats_descriptions:basic_information.formats_text)
 
 
 # UI ----------------------------------------------------------------------
@@ -54,7 +36,7 @@ ui <- navbarPage(
     
     add_busy_bar(color = "#FFFFFF"),
 
-    # bit with the username input and submit button 
+    # username input / submit
     fluidRow(
       column(3,
              wellPanel(
@@ -64,30 +46,35 @@ ui <- navbarPage(
                actionButton("go", "submit")
                ),
       
-    # bit with the years slider and x-axis var selector
+    # other user inputs
     wellPanel(
       dateRangeInput("dateRange", label = "diggin' dates",
                      startview = "year"
                      ),
-      selectInput("xVar", label = "wot 2 look at?", 
-                  choices = c("labels", "artists", "formats", "issue year"),
-                  selected = "labels"
+      selectInput("xVar", label = "diggin' dimensions", 
+                  choices = list(
+                    "collection evolution" = "cum_recs", "records x month" = "recs_mon" ,
+                    "records x year" = "recs_year", "labels" = "basic_information.labels_name", 
+                    "artists" = "basic_information.artists_name", 
+                    "formats" = "basic_information.formats_name" , 
+                    "issue year" = "basic_information.year"
+                    )
       ),
-      selectInput("chartType", label = "chart type", 
+      selectInput("chartType", label = "choose a chart", 
                   choices = c("bar", "column", "line", "spline"),
                   selected = "spline"
                   )
       )
     ),
   
-    # Main panel w/ plot
+    # chart panel
     column(9,  
       wellPanel(
         highchartOutput("chart", height = "500px")
       ))
    )),
 
-  # about page (draws from Rmd file)
+  # about page
   tabPanel("about",
          fluidRow(
            column(6, includeMarkdown("about.Rmd")
@@ -116,27 +103,10 @@ server <- function(input, output, session) {
     # fix dates
     collection_df$date_added <- anydate(collection_df$date_added, "%Y-%m-%d")
     
-    collection_df
+    as_tsibble(collection_df, key = id, index = date_added)
     
     })
   
-  collection_dated <- reactive({
-    
-    filter(collection(), between(date_added, input$dateRange[1], input$dateRange[2]))
-  })
-
-  # make dataframe for cumulative line graph
-  collection_yearmon <- reactive({
-    
-    collection() %>%
-      as_tsibble(key = id, index = date_added) %>% 
-      index_by(year_month = yearmonth(date_added)) %>% 
-      summarise(n_recs = n()) %>% 
-      fill_gaps(n_recs = 0)  %>% 
-      mutate(cum_recs = cumsum(n_recs))
-    
-  })
-
   # update available date values based on users collection
   observe({
     
@@ -149,12 +119,65 @@ server <- function(input, output, session) {
                          max = max(df$date_added))
   })
   
+  # collection cut by date range
+  collection_dated <- reactive({
+    
+    dplyr::filter(collection(), between(date_added, input$dateRange[1], input$dateRange[2]))
+  })
+
+  # make time aware df
+  collection_year <- reactive({
+    
+    collection_dated() %>%
+      index_by(period = year(date_added)) %>% 
+      summarise(recs_year = n()) %>% 
+      fill_gaps(recs_year = 0)
+    
+  })
+  
+  collection_yearmon <- reactive({
+    
+    collection_dated() %>%
+      index_by(period = yearmonth(date_added)) %>% 
+      summarise(recs_mon = n()) %>% 
+      fill_gaps(recs_mon = 0)  %>% 
+      mutate(cum_recs = cumsum(recs_mon))
+    
+  })
+  
+  collection_dim <- reactive({
+    
+    switch(input$xVar,
+           "cum_recs" = collection_yearmon(),
+           "records x month" = collection_yearmon(),
+           "records x year" = collection_year(),
+           "labels" = unnest(collection_dated(), basic_information.labels, .sep = "_"),
+           "artists" = unnest(collection_dated(), basic_information.artists, .sep = "_"),
+           "formats" = unnest(collection_dated(), basic_information.formats, .sep = "_"),
+           "issue year" = collection_dated()
+           )
+  })
+  
   # highchart output dependent on x-axis var picked by user 
   output$chart <- renderHighchart({
     
-    collection_yearmon() %>%
-      hchart(input$chartType, hcaes(x = year_month, y = n_recs), name="Records", 
-             color="#252525") %>%
+    # check for username
+    req(input$userName)
+    
+    df <- collection_dim()
+    
+    # temp col for highcharter
+    df$y <- df[[input$xVar]]
+    
+    # time series chart base
+    if ("period" %in% colnames(df)) {
+      
+      hchart(df, input$chartType, hcaes(x = "period", y = "y"),
+             name = "Records", color = "#252525") 
+    }
+    
+    # add generic chart layers
+    chart %>%
       hc_yAxis(allowDecimals = FALSE, title = list(text = "No. of records")) %>%
       hc_add_theme(hc_theme_smpl())
   })
